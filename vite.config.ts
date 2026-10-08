@@ -171,6 +171,15 @@ export default defineConfig(({ command, isPreview }) => ({
       ? [
           nitro({
             preset: "vercel",
+            // Radix UI imports this helper at runtime. Inline it so the Vercel
+            // function never depends on a separately traced node_modules copy.
+            externals: {
+              inline: ["tslib"],
+            },
+            // Nitro's Vite builder can otherwise split Radix UI helpers into
+            // `_libs` while leaving their CJS helper imports unresolved in the
+            // Vercel lambda. Emit one self-contained server bundle instead.
+            noExternals: true,
             // Auto-registers server/middleware/* (the PWA install page +
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
