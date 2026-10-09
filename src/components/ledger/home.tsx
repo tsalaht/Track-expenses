@@ -119,7 +119,7 @@ export function LedgerHome() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-1 text-xs text-muted-foreground md:flex" title={syncState === "synced" ? "محفوظ في Google Sheets" : syncState === "local" ? "حفظ محلي إلى أن يتوفر اتصال Google Sheets" : syncState === "error" ? "تعذرت المزامنة مع Google Sheets" : "جارٍ التحقق من المزامنة"}>
+            <div className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:text-xs" title={syncState === "synced" ? "محفوظ في Google Sheets" : syncState === "local" ? "حفظ محلي إلى أن يتوفر اتصال Google Sheets" : syncState === "error" ? "تعذرت المزامنة مع Google Sheets" : "جارٍ التحقق من المزامنة"}>
               {syncState === "synced" ? <Cloud className="size-4 text-income" /> : <CloudOff className="size-4" />}
               {syncState === "synced" ? "متزامن" : syncState === "local" ? "محلي" : syncState === "error" ? "تعذر الاتصال" : "مزامنة…"}
             </div>

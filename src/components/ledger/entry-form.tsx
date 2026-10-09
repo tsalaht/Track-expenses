@@ -85,16 +85,18 @@ export function EntryDialog({
     const draft = { type, category, amount: parsed, date, note: note.trim() };
     if (intent?.mode === "edit" && intent.entry) {
       try {
-        await updateEntry(intent.entry.id, draft);
-        toast.success("تعدّلت الحركة");
+        const synced = await updateEntry(intent.entry.id, draft);
+        if (synced) toast.success("تعدّلت الحركة وتزامنت مع Google Sheets");
+        else toast.warning("تعدّلت على هذا الجهاز فقط؛ Google Sheets غير متصل.");
       } catch {
         toast.error("ما تحفظتش الحركة. عاود المحاولة.");
         return;
       }
     } else {
       try {
-        await addEntry(draft);
-        toast.success(type === "income" ? "تسجّل المدخول" : "تسجّل المصروف");
+        const synced = await addEntry(draft);
+        if (synced) toast.success(type === "income" ? "تسجّل المدخول وتزامن مع Google Sheets" : "تسجّل المصروف وتزامن مع Google Sheets");
+        else toast.warning("تسجّل على هذا الجهاز فقط؛ Google Sheets غير متصل.");
       } catch {
         toast.error("ما تحفظتش الحركة. عاود المحاولة.");
         return;

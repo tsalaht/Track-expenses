@@ -19,31 +19,34 @@ export type EntryDraft = {
 
 type LedgerState = {
   entries: LedgerEntry[];
-  addEntry: (draft: EntryDraft) => Promise<void>;
-  updateEntry: (id: string, draft: EntryDraft) => Promise<void>;
-  removeEntry: (id: string) => Promise<void>;
+  addEntry: (draft: EntryDraft) => Promise<boolean>;
+  updateEntry: (id: string, draft: EntryDraft) => Promise<boolean>;
+  removeEntry: (id: string) => Promise<boolean>;
   loadDemo: () => void;
 };
 
 export const useLedgerStore = create<LedgerState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       entries: createDemoEntries(),
       addEntry: async (draft) => {
         const entry: LedgerEntry = { ...draft, id: newId(), createdAt: Date.now() };
-        await saveLedgerEntry({ data: entry });
+        const result = await saveLedgerEntry({ data: entry });
         set((state) => ({ entries: [entry, ...state.entries] }));
+        return result.configured;
       },
       updateEntry: async (id, draft) => {
-        const current = useLedgerStore.getState().entries.find((entry) => entry.id === id);
-        if (!current) return;
+        const current = get().entries.find((entry) => entry.id === id);
+        if (!current) return false;
         const updated = { ...current, ...draft };
-        await saveLedgerEntry({ data: updated });
+        const result = await saveLedgerEntry({ data: updated });
         set((state) => ({ entries: state.entries.map((entry) => (entry.id === id ? updated : entry)) }));
+        return result.configured;
       },
       removeEntry: async (id) => {
-        await removeLedgerEntry({ data: id });
+        const result = await removeLedgerEntry({ data: id });
         set((state) => ({ entries: state.entries.filter((entry) => entry.id !== id) }));
+        return result.configured;
       },
       loadDemo: () => set({ entries: createDemoEntries() }),
     }),
