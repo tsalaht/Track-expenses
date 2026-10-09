@@ -149,6 +149,15 @@ function encodeRow(entry: LedgerEntry): unknown[] {
   return ["shared", entry.id, entry.type, entry.category, entry.amount, entry.date, entry.note, entry.createdAt];
 }
 
+async function appendEntries(entries: LedgerEntry[]): Promise<void> {
+  if (!entries.length) return;
+  const range = encodeURIComponent(`${sheetTitle}!A:H`);
+  await sheetsRequest(`/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
+    method: "POST",
+    body: JSON.stringify({ values: entries.map(encodeRow) }),
+  });
+}
+
 export async function listEntries(): Promise<LedgerEntry[]> {
   const { entries } = decodeRows(await getValues());
   return entries.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
@@ -158,10 +167,15 @@ export async function saveEntry(entry: LedgerEntry): Promise<void> {
   const values = await getValues();
   const { rowById } = decodeRows(values);
   const rowIndex = rowById.get(entry.id);
-  const range = rowIndex ? `${sheetTitle}!A${rowIndex}:H${rowIndex}` : `${sheetTitle}!A:H`;
-  const method = rowIndex ? "PUT" : "POST";
-  const url = `/values/${encodeURIComponent(range)}?valueInputOption=RAW${rowIndex ? "" : "&insertDataOption=INSERT_ROWS"}`;
-  await sheetsRequest(url, { method, body: JSON.stringify({ values: [encodeRow(entry)] }) });
+  if (rowIndex) {
+    const range = encodeURIComponent(`${sheetTitle}!A${rowIndex}:H${rowIndex}`);
+    await sheetsRequest(`/values/${range}?valueInputOption=RAW`, {
+      method: "PUT",
+      body: JSON.stringify({ values: [encodeRow(entry)] }),
+    });
+    return;
+  }
+  await appendEntries([entry]);
 }
 
 export async function deleteEntry(id: string): Promise<void> {
@@ -186,11 +200,6 @@ export async function importMissingEntries(localEntries: LedgerEntry[]): Promise
   const decoded = decodeRows(values);
   const known = new Set(decoded.entries.map((entry) => entry.id));
   const missing = localEntries.filter((entry) => !entry.id.startsWith("demo-") && !known.has(entry.id));
-  if (missing.length) {
-    await sheetsRequest(`/values/${encodeURIComponent(`${sheetTitle}!A:H`)}?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
-      method: "POST",
-      body: JSON.stringify({ values: missing.map((entry) => encodeRow(entry)) }),
-    });
-  }
+  await appendEntries(missing);
   return listEntries();
 }
