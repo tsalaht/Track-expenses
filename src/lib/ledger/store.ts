@@ -7,6 +7,7 @@ import {
   type CategoryId,
   type LedgerEntry,
 } from "./model";
+import { clearLedger, removeLedgerEntry, saveLedgerEntry } from "./actions";
 
 export type EntryDraft = {
   type: EntryType;
@@ -18,38 +19,38 @@ export type EntryDraft = {
 
 type LedgerState = {
   entries: LedgerEntry[];
-  addEntry: (draft: EntryDraft) => void;
-  updateEntry: (id: string, draft: EntryDraft) => void;
-  removeEntry: (id: string) => void;
+  addEntry: (draft: EntryDraft) => Promise<void>;
+  updateEntry: (id: string, draft: EntryDraft) => Promise<void>;
+  removeEntry: (id: string) => Promise<void>;
   loadDemo: () => void;
-  clearAll: () => void;
+  clearAll: () => Promise<void>;
 };
 
 export const useLedgerStore = create<LedgerState>()(
   persist(
     (set) => ({
       entries: createDemoEntries(),
-      addEntry: (draft) =>
-        set((state) => ({
-          entries: [
-            {
-              ...draft,
-              id: newId(),
-              createdAt: Date.now(),
-            },
-            ...state.entries,
-          ],
-        })),
-      updateEntry: (id, draft) =>
-        set((state) => ({
-          entries: state.entries.map((e) => (e.id === id ? { ...e, ...draft } : e)),
-        })),
-      removeEntry: (id) =>
-        set((state) => ({
-          entries: state.entries.filter((e) => e.id !== id),
-        })),
+      addEntry: async (draft) => {
+        const entry: LedgerEntry = { ...draft, id: newId(), createdAt: Date.now() };
+        await saveLedgerEntry({ data: entry });
+        set((state) => ({ entries: [entry, ...state.entries] }));
+      },
+      updateEntry: async (id, draft) => {
+        const current = useLedgerStore.getState().entries.find((entry) => entry.id === id);
+        if (!current) return;
+        const updated = { ...current, ...draft };
+        await saveLedgerEntry({ data: updated });
+        set((state) => ({ entries: state.entries.map((entry) => (entry.id === id ? updated : entry)) }));
+      },
+      removeEntry: async (id) => {
+        await removeLedgerEntry({ data: id });
+        set((state) => ({ entries: state.entries.filter((entry) => entry.id !== id) }));
+      },
       loadDemo: () => set({ entries: createDemoEntries() }),
-      clearAll: () => set({ entries: [] }),
+      clearAll: async () => {
+        await clearLedger();
+        set({ entries: [] });
+      },
     }),
     {
       name: "mizan-ledger-v1",

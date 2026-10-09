@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, MoreHorizontal, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Cloud, CloudOff, Download, MoreHorizontal, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ScaleMark } from "@/components/ledger/mark";
 import { KpiGrid } from "@/components/ledger/kpis";
@@ -41,6 +41,8 @@ import {
   type PeriodId,
 } from "@/lib/ledger/model";
 import { useLedgerStore } from "@/lib/ledger/store";
+import { syncLedger } from "@/lib/ledger/actions";
+import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/utils";
 
 function exportCsv(entries: LedgerEntry[]) {
@@ -72,9 +74,24 @@ export function LedgerHome() {
   const [period, setPeriod] = useState<PeriodId>("last-30");
   const [intent, setIntent] = useState<EntryIntent | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [syncState, setSyncState] = useState<"loading" | "synced" | "local" | "error">("loading");
 
   useEffect(() => {
-    void useLedgerStore.persist.rehydrate();
+    let active = true;
+    void (async () => {
+      await useLedgerStore.persist.rehydrate();
+      try {
+        const result = await syncLedger({ data: { entries: useLedgerStore.getState().entries } });
+        if (!active) return;
+        if (result.configured) useLedgerStore.setState({ entries: result.entries });
+        setSyncState(result.configured ? "synced" : "local");
+      } catch (error) {
+        if (!active) return;
+        console.error("Ledger sync failed", error);
+        setSyncState("error");
+      }
+    })();
+    return () => { active = false; };
   }, []);
 
   const range = useMemo(() => getPeriodRange(period), [period]);
@@ -104,6 +121,11 @@ export function LedgerHome() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <div className="hidden items-center gap-1 text-xs text-muted-foreground md:flex" title={syncState === "synced" ? "محفوظ في Google Sheets" : syncState === "local" ? "حفظ محلي إلى أن يتوفر اتصال Google Sheets" : syncState === "error" ? "تعذرت المزامنة مع Google Sheets" : "جارٍ التحقق من المزامنة"}>
+              {syncState === "synced" ? <Cloud className="size-4 text-income" /> : <CloudOff className="size-4" />}
+              {syncState === "synced" ? "متزامن" : syncState === "local" ? "محلي" : syncState === "error" ? "تعذر الاتصال" : "مزامنة…"}
+            </div>
+            <UserButton />
             <Button
               className="hidden sm:inline-flex"
               variant="secondary"
@@ -255,8 +277,9 @@ export function LedgerHome() {
             <AlertDialogAction
               className="bg-destructive text-background hover:bg-destructive/90"
               onClick={() => {
-                clearAll();
-                toast.success("الدفتر ولا فاضي");
+                void clearAll()
+                  .then(() => toast.success("الدفتر ولا فاضي"))
+                  .catch(() => toast.error("ما تمسحش الدفتر. عاود المحاولة."));
               }}
             >
               امسح كلشي

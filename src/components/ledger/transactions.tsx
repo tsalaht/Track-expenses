@@ -126,8 +126,9 @@ export function TransactionList({
                     variant="ghost"
                     className="size-10"
                     onClick={() => {
-                      removeEntry(entry.id);
-                      toast.success("تمسح الحركة");
+                      void removeEntry(entry.id)
+                        .then(() => toast.success("تمسح الحركة"))
+                        .catch(() => toast.error("ما تحذفتش الحركة. عاود المحاولة."));
                     }}
                     aria-label="حذف"
                   >

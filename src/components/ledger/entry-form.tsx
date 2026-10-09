@@ -75,7 +75,7 @@ export function EntryDialog({
     }
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     const parsed = parseAmountInput(amount);
     if (parsed === null) {
@@ -84,11 +84,21 @@ export function EntryDialog({
     }
     const draft = { type, category, amount: parsed, date, note: note.trim() };
     if (intent?.mode === "edit" && intent.entry) {
-      updateEntry(intent.entry.id, draft);
-      toast.success("تعدّلت الحركة");
+      try {
+        await updateEntry(intent.entry.id, draft);
+        toast.success("تعدّلت الحركة");
+      } catch {
+        toast.error("ما تحفظتش الحركة. عاود المحاولة.");
+        return;
+      }
     } else {
-      addEntry(draft);
-      toast.success(type === "income" ? "تسجّل المدخول" : "تسجّل المصروف");
+      try {
+        await addEntry(draft);
+        toast.success(type === "income" ? "تسجّل المدخول" : "تسجّل المصروف");
+      } catch {
+        toast.error("ما تحفظتش الحركة. عاود المحاولة.");
+        return;
+      }
     }
     onClose();
   }

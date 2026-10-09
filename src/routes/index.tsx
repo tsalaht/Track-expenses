@@ -1,8 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { LedgerHome } from "@/components/ledger/home";
+import { SignInGate } from "@/lib/auth/gates";
 
 export const Route = createFileRoute("/")({ component: Home });
 
 function Home() {
-  return <LedgerHome />;
+  return <SignInGate fallback={<Navigate to="/login" />}><LedgerHome /></SignInGate>;
 }
