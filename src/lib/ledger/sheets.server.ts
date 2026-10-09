@@ -10,13 +10,17 @@ function env(name: string): string | undefined {
 }
 
 export function sheetsConfigured(): boolean {
+  return missingSheetSettings().length === 0;
+}
+
+export function missingSheetSettings(): string[] {
   return [
     "GCP_PROJECT_NUMBER",
     "GCP_SERVICE_ACCOUNT_EMAIL",
     "GCP_WORKLOAD_IDENTITY_POOL_ID",
     "GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID",
     "GOOGLE_SHEET_ID",
-  ].every((key) => Boolean(env(key)));
+  ].filter((key) => !env(key));
 }
 
 async function googleAccessToken(): Promise<string> {
@@ -32,8 +36,8 @@ async function googleAccessToken(): Promise<string> {
   }
 
   const { getVercelOidcToken } = await import("@vercel/oidc");
-  const subjectToken = await getVercelOidcToken();
   const audience = `//iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`;
+  const subjectToken = await getVercelOidcToken({ audience: `https:${audience}` });
   const exchange = await fetch("https://sts.googleapis.com/v1/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },

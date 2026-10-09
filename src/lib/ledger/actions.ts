@@ -18,7 +18,9 @@ export const syncLedger = createServerFn({ method: "POST" })
   }))
   .handler(async ({ data }) => {
     const sheets = await import("./sheets.server");
-    if (!sheets.sheetsConfigured()) return { configured: false as const, entries: data.entries };
+    if (!sheets.sheetsConfigured()) {
+      return { configured: false as const, missing: sheets.missingSheetSettings(), entries: data.entries };
+    }
     const entries = await sheets.importMissingEntries(data.entries as LedgerEntry[]);
     return { configured: true as const, entries };
   });
@@ -27,7 +29,9 @@ export const saveLedgerEntry = createServerFn({ method: "POST" })
   .validator((entry: LedgerEntry) => entrySchema.parse(entry))
   .handler(async ({ data }) => {
     const sheets = await import("./sheets.server");
-    if (!sheets.sheetsConfigured()) return { configured: false as const };
+    if (!sheets.sheetsConfigured()) {
+      return { configured: false as const, missing: sheets.missingSheetSettings() };
+    }
     await sheets.saveEntry(data as LedgerEntry);
     return { configured: true as const };
   });
@@ -36,7 +40,9 @@ export const removeLedgerEntry = createServerFn({ method: "POST" })
   .validator((id: string) => z.string().min(1).max(100).parse(id))
   .handler(async ({ data: id }) => {
     const sheets = await import("./sheets.server");
-    if (!sheets.sheetsConfigured()) return { configured: false as const };
+    if (!sheets.sheetsConfigured()) {
+      return { configured: false as const, missing: sheets.missingSheetSettings() };
+    }
     await sheets.deleteEntry(id);
     return { configured: true as const };
   });

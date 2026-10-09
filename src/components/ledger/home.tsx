@@ -65,6 +65,7 @@ export function LedgerHome() {
   useEffect(() => {
     let active = true;
     let syncing = false;
+    let showedSyncProblem = false;
     const sync = async () => {
       if (syncing) return;
       syncing = true;
@@ -73,10 +74,25 @@ export function LedgerHome() {
         if (!active) return;
         if (result.configured) useLedgerStore.setState({ entries: result.entries });
         setSyncState(result.configured ? "synced" : "local");
+        if (!result.configured && !showedSyncProblem) {
+          showedSyncProblem = true;
+          toast.warning(
+            result.missing.length
+              ? `المزامنة غير مفعّلة. أضف هذه القيم في Vercel: ${result.missing.join(", ")}`
+              : "Google Sheets غير مربوط بهذا النشر في Vercel.",
+            { duration: 12_000 },
+          );
+        }
       } catch (error) {
         if (!active) return;
         console.error("Ledger sync failed", error);
         setSyncState("error");
+        if (!showedSyncProblem) {
+          showedSyncProblem = true;
+          toast.error(`فشلت مزامنة Google Sheets: ${error instanceof Error ? error.message : String(error)}`, {
+            duration: 12_000,
+          });
+        }
       } finally {
         syncing = false;
       }
