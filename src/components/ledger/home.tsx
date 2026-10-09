@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Cloud, CloudOff, Download, MoreHorizontal, Plus } from "lucide-react";
+import { Cloud, CloudOff, Download, Loader2, MoreHorizontal, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { ScaleMark } from "@/components/ledger/mark";
 import { KpiGrid } from "@/components/ledger/kpis";
@@ -59,14 +59,14 @@ export function LedgerHome() {
 
   const [period, setPeriod] = useState<PeriodId>("last-30");
   const [intent, setIntent] = useState<EntryIntent | null>(null);
-  const [syncState, setSyncState] = useState<"loading" | "synced" | "error">("loading");
+  const [syncState, setSyncState] = useState<"loading" | "refreshing" | "synced" | "error">("loading");
   const syncInFlight = useRef(false);
   const hasLoadedFromSheet = useRef(false);
 
   const refreshSheet = useCallback(async (migrateLegacy = false) => {
     if (syncInFlight.current) return;
     syncInFlight.current = true;
-    if (!hasLoadedFromSheet.current) setSyncState("loading");
+    setSyncState(hasLoadedFromSheet.current ? "refreshing" : "loading");
     try {
       let remoteEntries: LedgerEntry[] | null = null;
       if (migrateLegacy) {
@@ -162,9 +162,9 @@ export function LedgerHome() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:text-xs" title={syncState === "synced" ? "متصل بـ Google Sheets" : syncState === "error" ? "تعذر الاتصال بـ Google Sheets" : "جارٍ تحميل بيانات الشيت"}>
-              {syncState === "synced" ? <Cloud className="size-4 text-income" /> : <CloudOff className="size-4" />}
-              {syncState === "synced" ? "متصل" : syncState === "error" ? "تعذر الاتصال" : "تحميل…"}
+            <div className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:text-xs" title={syncState === "synced" ? "متصل بـ Google Sheets" : syncState === "error" ? "تعذر الاتصال بـ Google Sheets" : syncState === "refreshing" ? "جارٍ تحديث بيانات Google Sheets" : "جارٍ تحميل بيانات الشيت"} aria-live="polite">
+              {syncState === "synced" ? <Cloud className="size-4 text-income" /> : syncState === "error" ? <CloudOff className="size-4" /> : <Loader2 className="size-4 animate-spin" />}
+              {syncState === "synced" ? "متصل" : syncState === "error" ? "تعذر الاتصال" : syncState === "refreshing" ? "تحديث…" : "تحميل…"}
             </div>
             <Button
               className="hidden sm:inline-flex"
@@ -225,7 +225,8 @@ export function LedgerHome() {
         </div>
 
         {syncState === "loading" && !hasLoadedFromSheet.current ? (
-          <section className="rounded-xl bg-card px-6 py-14 text-center text-sm text-muted-foreground shadow-[var(--shadow-border)]">
+          <section className="rounded-xl bg-card px-6 py-14 text-center text-sm text-muted-foreground shadow-[var(--shadow-border)]" aria-live="polite">
+            <Loader2 className="mx-auto mb-3 size-5 animate-spin" />
             جارٍ تحميل الحركات من Google Sheets…
           </section>
         ) : syncState === "error" && !hasLoadedFromSheet.current ? (

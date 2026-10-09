@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +45,7 @@ export function EntryDialog({
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
   const [note, setNote] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!intent) return;
@@ -77,42 +79,38 @@ export function EntryDialog({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (isSaving) return;
     const parsed = parseAmountInput(amount);
     if (parsed === null) {
       toast.error("أكتب المبلغ بالدينار");
       return;
     }
     const draft = { type, category, amount: parsed, date, note: note.trim() };
-    if (intent?.mode === "edit" && intent.entry) {
-      try {
+    setIsSaving(true);
+    try {
+      if (intent?.mode === "edit" && intent.entry) {
         const synced = await updateEntry(intent.entry.id, draft);
         if (synced) toast.success("تعدّلت الحركة وتزامنت مع Google Sheets");
         else toast.error("ما لقيناش الحركة باش نعدلوها.");
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "تعذر حفظ الحركة في Google Sheets.", {
-          duration: 12_000,
-        });
-        return;
-      }
-    } else {
-      try {
+      } else {
         const synced = await addEntry(draft);
         if (synced) toast.success(type === "income" ? "تسجّل المدخول وتزامن مع Google Sheets" : "تسجّل المصروف وتزامن مع Google Sheets");
         else toast.error("ما تمش حفظ الحركة في Google Sheets.");
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "تعذر حفظ الحركة في Google Sheets.", {
-          duration: 12_000,
-        });
-        return;
       }
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر حفظ الحركة في Google Sheets.", {
+        duration: 12_000,
+      });
+    } finally {
+      setIsSaving(false);
     }
-    onClose();
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open} onOpenChange={(next) => !next && !isSaving && onClose()}>
       <DialogContent>
-        <form onSubmit={submit} className="flex min-h-0 flex-col gap-4">
+        <form onSubmit={submit} aria-busy={isSaving} className="flex min-h-0 flex-col gap-4">
           <DialogHeader>
             <DialogTitle>
               {intent?.mode === "edit"
@@ -130,6 +128,7 @@ export function EntryDialog({
             <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
               <button
                 type="button"
+                disabled={isSaving}
                 onClick={() => onTypeChange("expense")}
                 className={cn(
                   "h-10 rounded-md text-sm font-medium transition-colors",
@@ -142,6 +141,7 @@ export function EntryDialog({
               </button>
               <button
                 type="button"
+                disabled={isSaving}
                 onClick={() => onTypeChange("income")}
                 className={cn(
                   "h-10 rounded-md text-sm font-medium transition-colors",
@@ -164,6 +164,7 @@ export function EntryDialog({
                   autoComplete="off"
                   placeholder="2500"
                   value={amount}
+                  disabled={isSaving}
                   onChange={(ev) => setAmount(ev.target.value)}
                   className="ps-12 text-left text-lg tabular-nums"
                 />
@@ -183,6 +184,7 @@ export function EntryDialog({
                     <button
                       key={c.id}
                       type="button"
+                      disabled={isSaving}
                       onClick={() => setCategory(c.id)}
                       className={cn(
                         "flex h-auto min-h-11 flex-col items-start gap-1 rounded-md px-3 py-2 text-right transition-colors",
@@ -217,6 +219,7 @@ export function EntryDialog({
                   type="date"
                   dir="ltr"
                   value={date}
+                  disabled={isSaving}
                   onChange={(ev) => setDate(ev.target.value)}
                   className="text-left"
                 />
@@ -227,6 +230,7 @@ export function EntryDialog({
                   id="note"
                   placeholder="مثال: ياليدين، حملة رييلز…"
                   value={note}
+                  disabled={isSaving}
                   onChange={(ev) => setNote(ev.target.value)}
                 />
               </div>
@@ -234,10 +238,12 @@ export function EntryDialog({
           </div>
 
           <DialogFooter>
-            <Button type="submit" className="w-full sm:w-auto">
-              {intent?.mode === "edit" ? "حفظ التعديل" : "سجّل"}
+            <Button type="submit" disabled={isSaving} className="w-full sm:w-auto" aria-live="polite">
+              {isSaving ? (
+                <><Loader2 className="size-4 animate-spin" />{intent?.mode === "edit" ? "جارٍ حفظ التعديل…" : "جارٍ رفع الحركة…"}</>
+              ) : intent?.mode === "edit" ? "حفظ التعديل" : "سجّل"}
             </Button>
-            <Button type="button" variant="ghost" onClick={onClose} className="w-full sm:w-auto">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={isSaving} className="w-full sm:w-auto">
               إلغاء
             </Button>
           </DialogFooter>

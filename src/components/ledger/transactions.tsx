@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pencil, Search, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,25 @@ export function TransactionList({
   const removeEntry = useLedgerStore((s) => s.removeEntry);
   const [query, setQuery] = useState("");
   const [type, setType] = useState<"all" | EntryType>("all");
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
+
+  async function handleDelete(id: string) {
+    if (deletingIds.has(id)) return;
+    setDeletingIds((current) => new Set(current).add(id));
+    try {
+      const synced = await removeEntry(id);
+      if (synced) toast.success("تمسح الحركة من Google Sheets");
+      else toast.error("ما لقيناش الحركة باش نحذفوها.");
+    } catch {
+      toast.error("ما تحذفتش الحركة. عاود المحاولة.");
+    } finally {
+      setDeletingIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -85,6 +104,7 @@ export function TransactionList({
           {filtered.map((entry) => {
             const meta = categoryMeta(entry.type, entry.category);
             const Icon = meta.icon;
+            const isDeleting = deletingIds.has(entry.id);
             return (
               <li key={entry.id} className="flex min-w-0 items-center gap-3 py-3">
                 <span
@@ -117,6 +137,7 @@ export function TransactionList({
                     variant="ghost"
                     className="size-10"
                     onClick={() => onEdit(entry)}
+                    disabled={isDeleting}
                     aria-label="تعديل"
                   >
                     <Pencil className="size-4" />
@@ -125,14 +146,12 @@ export function TransactionList({
                     size="icon"
                     variant="ghost"
                     className="size-10"
-                    onClick={() => {
-                      void removeEntry(entry.id)
-                        .then((synced) => synced ? toast.success("تمسح الحركة من Google Sheets") : toast.error("ما لقيناش الحركة باش نحذفوها."))
-                        .catch(() => toast.error("ما تحذفتش الحركة. عاود المحاولة."));
-                    }}
-                    aria-label="حذف"
+                    onClick={() => void handleDelete(entry.id)}
+                    disabled={isDeleting}
+                    aria-label={isDeleting ? "جارٍ الحذف" : "حذف"}
+                    aria-busy={isDeleting}
                   >
-                    <Trash2 className="size-4" />
+                    {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
                   </Button>
                 </div>
               </li>
