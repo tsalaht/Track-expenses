@@ -78,8 +78,8 @@ export function LedgerHome() {
           showedSyncProblem = true;
           toast.warning(
             result.missing.length
-              ? `المزامنة غير مفعّلة. أضف هذه القيم في Vercel: ${result.missing.join(", ")}`
-              : "Google Sheets غير مربوط بهذا النشر في Vercel.",
+              ? `المزامنة غير جاهزة: ${result.missing.join("، ")}`
+              : "Google Sheets غير مربوط بالتطبيق.",
             { duration: 12_000 },
           );
         }
