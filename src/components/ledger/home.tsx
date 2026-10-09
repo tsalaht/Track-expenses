@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Cloud, CloudOff, Download, MoreHorizontal, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Cloud, CloudOff, Download, MoreHorizontal, Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { ScaleMark } from "@/components/ledger/mark";
 import { KpiGrid } from "@/components/ledger/kpis";
@@ -10,20 +10,9 @@ import { TransactionList } from "@/components/ledger/transactions";
 import { EntryDialog, type EntryIntent } from "@/components/ledger/entry-form";
 import { Button } from "@/components/ui/button";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -42,7 +31,6 @@ import {
 } from "@/lib/ledger/model";
 import { useLedgerStore } from "@/lib/ledger/store";
 import { syncLedger } from "@/lib/ledger/actions";
-import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/utils";
 
 function exportCsv(entries: LedgerEntry[]) {
@@ -69,17 +57,17 @@ function exportCsv(entries: LedgerEntry[]) {
 export function LedgerHome() {
   const entries = useLedgerStore((s) => s.entries);
   const loadDemo = useLedgerStore((s) => s.loadDemo);
-  const clearAll = useLedgerStore((s) => s.clearAll);
 
   const [period, setPeriod] = useState<PeriodId>("last-30");
   const [intent, setIntent] = useState<EntryIntent | null>(null);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [syncState, setSyncState] = useState<"loading" | "synced" | "local" | "error">("loading");
 
   useEffect(() => {
     let active = true;
-    void (async () => {
-      await useLedgerStore.persist.rehydrate();
+    let syncing = false;
+    const sync = async () => {
+      if (syncing) return;
+      syncing = true;
       try {
         const result = await syncLedger({ data: { entries: useLedgerStore.getState().entries } });
         if (!active) return;
@@ -89,9 +77,19 @@ export function LedgerHome() {
         if (!active) return;
         console.error("Ledger sync failed", error);
         setSyncState("error");
+      } finally {
+        syncing = false;
       }
-    })();
-    return () => { active = false; };
+    };
+    void Promise.resolve(useLedgerStore.persist.rehydrate()).then(sync);
+    const onFocus = () => void sync();
+    window.addEventListener("focus", onFocus);
+    const timer = window.setInterval(onFocus, 60_000);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
   }, []);
 
   const range = useMemo(() => getPeriodRange(period), [period]);
@@ -125,7 +123,6 @@ export function LedgerHome() {
               {syncState === "synced" ? <Cloud className="size-4 text-income" /> : <CloudOff className="size-4" />}
               {syncState === "synced" ? "متزامن" : syncState === "local" ? "محلي" : syncState === "error" ? "تعذر الاتصال" : "مزامنة…"}
             </div>
-            <UserButton />
             <Button
               className="hidden sm:inline-flex"
               variant="secondary"
@@ -165,14 +162,6 @@ export function LedgerHome() {
                 >
                   <RotateCcw className="size-4" />
                   رجّع المثال
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onSelect={() => setConfirmClear(true)}
-                >
-                  <Trash2 className="size-4" />
-                  امسح كلشي
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -263,30 +252,6 @@ export function LedgerHome() {
       </div>
 
       <EntryDialog intent={intent} onClose={() => setIntent(null)} />
-
-      <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>تمسح كل الحسابات؟</AlertDialogTitle>
-            <AlertDialogDescription>
-              هذا يمسح كل المداخيل والمصاريف من هذا الجهاز. ما تقدّرش ترجّعهم بعدما تمسح.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>خلّيهم</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-background hover:bg-destructive/90"
-              onClick={() => {
-                void clearAll()
-                  .then(() => toast.success("الدفتر ولا فاضي"))
-                  .catch(() => toast.error("ما تمسحش الدفتر. عاود المحاولة."));
-              }}
-            >
-              امسح كلشي
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

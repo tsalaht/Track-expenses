@@ -7,7 +7,7 @@ import {
   type CategoryId,
   type LedgerEntry,
 } from "./model";
-import { clearLedger, removeLedgerEntry, saveLedgerEntry } from "./actions";
+import { removeLedgerEntry, saveLedgerEntry } from "./actions";
 
 export type EntryDraft = {
   type: EntryType;
@@ -23,7 +23,6 @@ type LedgerState = {
   updateEntry: (id: string, draft: EntryDraft) => Promise<void>;
   removeEntry: (id: string) => Promise<void>;
   loadDemo: () => void;
-  clearAll: () => Promise<void>;
 };
 
 export const useLedgerStore = create<LedgerState>()(
@@ -47,10 +46,6 @@ export const useLedgerStore = create<LedgerState>()(
         set((state) => ({ entries: state.entries.filter((entry) => entry.id !== id) }));
       },
       loadDemo: () => set({ entries: createDemoEntries() }),
-      clearAll: async () => {
-        await clearLedger();
-        set({ entries: [] });
-      },
     }),
     {
       name: "mizan-ledger-v1",

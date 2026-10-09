@@ -4,11 +4,6 @@ const headers = ["user_id", "id", "type", "category", "amount", "date", "note", 
 const sheetTitle = "Transactions";
 let cachedAccessToken: { value: string; expiresAt: number } | undefined;
 
-type SheetRow = {
-  userId: string;
-  entry: LedgerEntry;
-};
-
 function env(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value || undefined;
@@ -121,11 +116,10 @@ async function ready(): Promise<void> {
   await readyPromise;
 }
 
-function decodeRows(values: unknown[][], userId: string): { entries: LedgerEntry[]; rowById: Map<string, number> } {
+function decodeRows(values: unknown[][]): { entries: LedgerEntry[]; rowById: Map<string, number> } {
   const entries: LedgerEntry[] = [];
   const rowById = new Map<string, number>();
   values.slice(1).forEach((row, index) => {
-    if (String(row[0] ?? "") !== userId) return;
     const id = String(row[1] ?? "");
     const type = String(row[2] ?? "");
     const category = String(row[3] ?? "");
@@ -151,43 +145,32 @@ async function getValues(): Promise<unknown[][]> {
   return result.values ?? [headers];
 }
 
-function encodeRow(userId: string, entry: LedgerEntry): unknown[] {
-  return [userId, entry.id, entry.type, entry.category, entry.amount, entry.date, entry.note, entry.createdAt];
+function encodeRow(entry: LedgerEntry): unknown[] {
+  return ["shared", entry.id, entry.type, entry.category, entry.amount, entry.date, entry.note, entry.createdAt];
 }
 
-export async function listEntries(userId: string): Promise<LedgerEntry[]> {
-  const { entries } = decodeRows(await getValues(), userId);
+export async function listEntries(): Promise<LedgerEntry[]> {
+  const { entries } = decodeRows(await getValues());
   return entries.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
 }
 
-export async function saveEntry(userId: string, entry: LedgerEntry): Promise<void> {
+export async function saveEntry(entry: LedgerEntry): Promise<void> {
   const values = await getValues();
-  const { rowById } = decodeRows(values, userId);
+  const { rowById } = decodeRows(values);
   const rowIndex = rowById.get(entry.id);
   const range = rowIndex ? `${sheetTitle}!A${rowIndex}:H${rowIndex}` : `${sheetTitle}!A:H`;
   const method = rowIndex ? "PUT" : "POST";
   const url = `/values/${encodeURIComponent(range)}?valueInputOption=RAW${rowIndex ? "" : "&insertDataOption=INSERT_ROWS"}`;
-  await sheetsRequest(url, { method, body: JSON.stringify({ values: [encodeRow(userId, entry)] }) });
+  await sheetsRequest(url, { method, body: JSON.stringify({ values: [encodeRow(entry)] }) });
 }
 
-export async function deleteEntry(userId: string, id: string): Promise<void> {
-  const { rowById } = decodeRows(await getValues(), userId);
+export async function deleteEntry(id: string): Promise<void> {
+  const { rowById } = decodeRows(await getValues());
   const rowIndex = rowById.get(id);
   if (!rowIndex) return;
   await sheetsRequest(":batchUpdate", {
     method: "POST",
     body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: await getSheetId(), dimension: "ROWS", startIndex: rowIndex - 1, endIndex: rowIndex } } }] }),
-  });
-}
-
-export async function deleteAllEntries(userId: string): Promise<void> {
-  const { rowById } = decodeRows(await getValues(), userId);
-  const sheetId = await getSheetId();
-  const rows = [...rowById.values()].sort((a, b) => b - a);
-  if (!rows.length) return;
-  await sheetsRequest(":batchUpdate", {
-    method: "POST",
-    body: JSON.stringify({ requests: rows.map((row) => ({ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: row - 1, endIndex: row } } })) }),
   });
 }
 
@@ -198,18 +181,16 @@ async function getSheetId(): Promise<number> {
   return id;
 }
 
-export async function importMissingEntries(userId: string, localEntries: LedgerEntry[]): Promise<LedgerEntry[]> {
+export async function importMissingEntries(localEntries: LedgerEntry[]): Promise<LedgerEntry[]> {
   const values = await getValues();
-  const decoded = decodeRows(values, userId);
+  const decoded = decodeRows(values);
   const known = new Set(decoded.entries.map((entry) => entry.id));
   const missing = localEntries.filter((entry) => !entry.id.startsWith("demo-") && !known.has(entry.id));
   if (missing.length) {
     await sheetsRequest(`/values/${encodeURIComponent(`${sheetTitle}!A:H`)}?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
       method: "POST",
-      body: JSON.stringify({ values: missing.map((entry) => encodeRow(userId, entry)) }),
+      body: JSON.stringify({ values: missing.map((entry) => encodeRow(entry)) }),
     });
   }
-  return listEntries(userId);
+  return listEntries();
 }
-
-export type { SheetRow };
