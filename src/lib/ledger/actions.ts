@@ -25,6 +25,14 @@ export const syncLedger = createServerFn({ method: "POST" })
     return { configured: true as const, entries };
   });
 
+export const loadLedger = createServerFn({ method: "GET" }).handler(async () => {
+  const sheets = await import("./sheets.server");
+  if (!sheets.sheetsConfigured()) {
+    throw new Error(`Google Sheets غير متصل. ${sheets.missingSheetSettings().join("، ")}`);
+  }
+  return sheets.listEntries();
+});
+
 export const saveLedgerEntry = createServerFn({ method: "POST" })
   .validator((entry: LedgerEntry) => entrySchema.parse(entry))
   .handler(async ({ data }) => {

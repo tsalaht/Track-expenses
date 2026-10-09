@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Cloud, CloudOff, Download, MoreHorizontal, Plus, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Cloud, CloudOff, Download, MoreHorizontal, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { ScaleMark } from "@/components/ledger/mark";
 import { KpiGrid } from "@/components/ledger/kpis";
@@ -30,7 +30,7 @@ import {
   type PeriodId,
 } from "@/lib/ledger/model";
 import { useLedgerStore } from "@/lib/ledger/store";
-import { syncLedger } from "@/lib/ledger/actions";
+import { loadLedger, syncLedger } from "@/lib/ledger/actions";
 import { cn } from "@/lib/utils";
 
 function exportCsv(entries: LedgerEntry[]) {
@@ -56,49 +56,77 @@ function exportCsv(entries: LedgerEntry[]) {
 
 export function LedgerHome() {
   const entries = useLedgerStore((s) => s.entries);
-  const loadDemo = useLedgerStore((s) => s.loadDemo);
 
   const [period, setPeriod] = useState<PeriodId>("last-30");
   const [intent, setIntent] = useState<EntryIntent | null>(null);
-  const [syncState, setSyncState] = useState<"loading" | "synced" | "local" | "error">("loading");
+  const [syncState, setSyncState] = useState<"loading" | "synced" | "error">("loading");
+  const syncInFlight = useRef(false);
+  const hasLoadedFromSheet = useRef(false);
+
+  const refreshSheet = useCallback(async (migrateLegacy = false) => {
+    if (syncInFlight.current) return;
+    syncInFlight.current = true;
+    if (!hasLoadedFromSheet.current) setSyncState("loading");
+    try {
+      let remoteEntries: LedgerEntry[] | null = null;
+      if (migrateLegacy) {
+        const raw = window.localStorage.getItem("mizan-ledger-v1");
+        if (raw) {
+          try {
+            const persisted = JSON.parse(raw) as { state?: { entries?: LedgerEntry[] } };
+            const legacyEntries = Array.isArray(persisted.state?.entries)
+              ? persisted.state.entries.filter(
+                  (entry) => entry && typeof entry.id === "string" && !entry.id.startsWith("demo-"),
+                )
+              : [];
+            if (legacyEntries.length) {
+              const migration = await syncLedger({ data: { entries: legacyEntries } });
+              if (!migration.configured) {
+                throw new Error(`Google Sheets غير متصل. ${migration.missing.join("، ")}`);
+              }
+              remoteEntries = migration.entries;
+            }
+          } catch (error) {
+            if (error instanceof SyntaxError) {
+              console.warn("Could not read old browser data; loading Google Sheets directly.", error);
+            } else {
+              throw error;
+            }
+          }
+        }
+      }
+      if (!remoteEntries) remoteEntries = await loadLedger();
+      useLedgerStore.setState({ entries: remoteEntries });
+      window.localStorage.removeItem("mizan-ledger-v1");
+      hasLoadedFromSheet.current = true;
+      setSyncState("synced");
+    } catch (error) {
+      if (!hasLoadedFromSheet.current) setSyncState("error");
+      throw error;
+    } finally {
+      syncInFlight.current = false;
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
-    let syncing = false;
     let showedSyncProblem = false;
-    const sync = async () => {
-      if (syncing) return;
-      syncing = true;
+    const sync = async (migrateLegacy = false) => {
       try {
-        const result = await syncLedger({ data: { entries: useLedgerStore.getState().entries } });
-        if (!active) return;
-        if (result.configured) useLedgerStore.setState({ entries: result.entries });
-        setSyncState(result.configured ? "synced" : "local");
-        if (!result.configured && !showedSyncProblem) {
-          showedSyncProblem = true;
-          toast.warning(
-            result.missing.length
-              ? `المزامنة غير جاهزة: ${result.missing.join("، ")}`
-              : "Google Sheets غير مربوط بالتطبيق.",
-            { duration: 12_000 },
-          );
-        }
+        await refreshSheet(migrateLegacy);
       } catch (error) {
         if (!active) return;
         console.error("Ledger sync failed", error);
-        setSyncState("error");
         if (!showedSyncProblem) {
           showedSyncProblem = true;
           toast.error(`فشلت مزامنة Google Sheets: ${error instanceof Error ? error.message : String(error)}`, {
             duration: 12_000,
           });
         }
-      } finally {
-        syncing = false;
       }
     };
-    void Promise.resolve(useLedgerStore.persist.rehydrate()).then(sync);
-    const onFocus = () => void sync();
+    void sync(true);
+    const onFocus = () => void sync(false);
     window.addEventListener("focus", onFocus);
     const timer = window.setInterval(onFocus, 60_000);
     return () => {
@@ -106,7 +134,7 @@ export function LedgerHome() {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(timer);
     };
-  }, []);
+  }, [refreshSheet]);
 
   const range = useMemo(() => getPeriodRange(period), [period]);
   const prevRange = useMemo(() => getPreviousRange(period), [period]);
@@ -119,7 +147,6 @@ export function LedgerHome() {
   const prevTotals = prevRange ? computeTotals(prevVisible) : null;
   const breakdown = useMemo(() => expenseBreakdown(visible), [visible]);
   const series = useMemo(() => flowSeries(visible, range, period), [visible, range, period]);
-  const isDemo = entries.some((e) => e.id.startsWith("demo-"));
 
   return (
     <div className="relative min-h-dvh overflow-x-hidden pb-28 sm:pb-10">
@@ -135,9 +162,9 @@ export function LedgerHome() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:text-xs" title={syncState === "synced" ? "محفوظ في Google Sheets" : syncState === "local" ? "حفظ محلي إلى أن يتوفر اتصال Google Sheets" : syncState === "error" ? "تعذرت المزامنة مع Google Sheets" : "جارٍ التحقق من المزامنة"}>
+            <div className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:text-xs" title={syncState === "synced" ? "متصل بـ Google Sheets" : syncState === "error" ? "تعذر الاتصال بـ Google Sheets" : "جارٍ تحميل بيانات الشيت"}>
               {syncState === "synced" ? <Cloud className="size-4 text-income" /> : <CloudOff className="size-4" />}
-              {syncState === "synced" ? "متزامن" : syncState === "local" ? "محلي" : syncState === "error" ? "تعذر الاتصال" : "مزامنة…"}
+              {syncState === "synced" ? "متصل" : syncState === "error" ? "تعذر الاتصال" : "تحميل…"}
             </div>
             <Button
               className="hidden sm:inline-flex"
@@ -170,15 +197,6 @@ export function LedgerHome() {
                   <Download className="size-4" />
                   صدّر الفترة CSV
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    loadDemo();
-                    toast.success("تحمّل المثال");
-                  }}
-                >
-                  <RotateCcw className="size-4" />
-                  رجّع المثال
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -206,20 +224,21 @@ export function LedgerHome() {
           </div>
         </div>
 
-        {isDemo ? (
-          <p className="rise-in rise-in-1 rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
-            هاد أرقام مثال باش تشوف كيفاش يخدم الدفتر. من القائمة فوق تقدر تمسحو وتبدأ بحساباتك.
-          </p>
-        ) : null}
-
-        {entries.length === 0 ? (
+        {syncState === "loading" && !hasLoadedFromSheet.current ? (
+          <section className="rounded-xl bg-card px-6 py-14 text-center text-sm text-muted-foreground shadow-[var(--shadow-border)]">
+            جارٍ تحميل الحركات من Google Sheets…
+          </section>
+        ) : syncState === "error" && !hasLoadedFromSheet.current ? (
+          <section className="rounded-xl bg-card px-6 py-10 text-center shadow-[var(--shadow-border)]">
+            <CloudOff className="mx-auto size-8 text-muted-foreground" />
+            <h2 className="mt-4 text-lg font-semibold">تعذر الوصول إلى الشيت</h2>
+            <p className="mt-2 text-sm text-muted-foreground">ما عرضناش نسخة محلية باش تبقى بياناتك متطابقة مع الشيت.</p>
+            <Button className="mt-5" onClick={() => void refreshSheet(true).catch(() => undefined)}>عاود الاتصال</Button>
+          </section>
+        ) : entries.length === 0 ? (
           <EmptyState
             onIncome={() => setIntent({ mode: "create", type: "income" })}
             onExpense={() => setIntent({ mode: "create", type: "expense" })}
-            onDemo={() => {
-              loadDemo();
-              toast.success("تحمّل المثال");
-            }}
           />
         ) : (
           <>
@@ -275,11 +294,9 @@ export function LedgerHome() {
 function EmptyState({
   onIncome,
   onExpense,
-  onDemo,
 }: {
   onIncome: () => void;
   onExpense: () => void;
-  onDemo: () => void;
 }) {
   return (
     <section className="flex flex-col items-center rounded-xl bg-card px-6 py-14 text-center shadow-[var(--shadow-border)]">
@@ -292,9 +309,6 @@ function EmptyState({
         <Button onClick={onIncome}>مدخول</Button>
         <Button variant="secondary" onClick={onExpense}>
           مصروف
-        </Button>
-        <Button variant="ghost" onClick={onDemo}>
-          شوف مثال
         </Button>
       </div>
     </section>

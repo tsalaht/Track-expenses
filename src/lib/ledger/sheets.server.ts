@@ -18,6 +18,29 @@ type AppsScriptResponse = {
   entries?: LedgerEntry[];
 };
 
+function normalizeSheetDate(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const parsed = value.match(/^[A-Za-z]{3}\s+([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})/);
+  if (parsed) {
+    const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].indexOf(parsed[1]!);
+    if (month >= 0) return `${parsed[3]}-${String(month + 1).padStart(2, "0")}-${parsed[2]!.padStart(2, "0")}`;
+  }
+  const date = new Date(value);
+  if (!Number.isNaN(date.valueOf())) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Lagos",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  }
+  throw new Error(`Apps Script returned an invalid transaction date: ${value}`);
+}
+
+function normalizeEntries(entries: LedgerEntry[]): LedgerEntry[] {
+  return entries.map((entry) => ({ ...entry, date: normalizeSheetDate(entry.date) }));
+}
+
 async function requestAppsScript(action: string, data: Record<string, unknown> = {}): Promise<AppsScriptResponse> {
   if (!sheetsConfigured()) throw new Error(missingSheetSettings()[0]);
 
@@ -36,7 +59,7 @@ async function requestAppsScript(action: string, data: Record<string, unknown> =
 
 export async function listEntries(): Promise<LedgerEntry[]> {
   const result = await requestAppsScript("list");
-  return (result.entries ?? []).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  return normalizeEntries(result.entries ?? []).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
 }
 
 export async function saveEntry(entry: LedgerEntry): Promise<void> {
@@ -51,5 +74,5 @@ export async function importMissingEntries(localEntries: LedgerEntry[]): Promise
   const result = await requestAppsScript("sync", {
     entries: localEntries.filter((entry) => !entry.id.startsWith("demo-")),
   });
-  return (result.entries ?? []).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  return normalizeEntries(result.entries ?? []).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
 }

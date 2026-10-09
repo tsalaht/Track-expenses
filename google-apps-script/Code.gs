@@ -75,12 +75,21 @@ function readEntries_(sheet) {
       type: String(row[2]),
       category: String(row[3]),
       amount: Number(row[4]),
-      date: row[5] instanceof Date
-        ? Utilities.formatDate(row[5], sheet.getParent().getSpreadsheetTimeZone(), "yyyy-MM-dd")
-        : String(row[5]),
+      date: toISODate_(row[5], sheet.getParent().getSpreadsheetTimeZone()),
       note: String(row[6] || ""),
       createdAt: Number(row[7]) || 0,
     }));
+}
+
+function toISODate_(value, timezone) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, timezone, "yyyy-MM-dd");
+  }
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) return Utilities.formatDate(parsed, timezone, "yyyy-MM-dd");
+  return text;
 }
 
 function findRow_(sheet, id) {

@@ -127,7 +127,7 @@ export function TransactionList({
                     className="size-10"
                     onClick={() => {
                       void removeEntry(entry.id)
-                        .then((synced) => synced ? toast.success("تمسح الحركة وتزامنت") : toast.warning("تمسحت من هذا الجهاز فقط؛ Google Sheets غير متصل."))
+                        .then((synced) => synced ? toast.success("تمسح الحركة من Google Sheets") : toast.error("ما لقيناش الحركة باش نحذفوها."))
                         .catch(() => toast.error("ما تحذفتش الحركة. عاود المحاولة."));
                     }}
                     aria-label="حذف"

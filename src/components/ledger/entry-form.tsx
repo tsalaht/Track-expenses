@@ -87,7 +87,7 @@ export function EntryDialog({
       try {
         const synced = await updateEntry(intent.entry.id, draft);
         if (synced) toast.success("تعدّلت الحركة وتزامنت مع Google Sheets");
-        else toast.warning("تعدّلت على هذا الجهاز فقط؛ Google Sheets غير متصل.");
+        else toast.error("ما لقيناش الحركة باش نعدلوها.");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "تعذر حفظ الحركة في Google Sheets.", {
           duration: 12_000,
@@ -98,7 +98,7 @@ export function EntryDialog({
       try {
         const synced = await addEntry(draft);
         if (synced) toast.success(type === "income" ? "تسجّل المدخول وتزامن مع Google Sheets" : "تسجّل المصروف وتزامن مع Google Sheets");
-        else toast.warning("تسجّل على هذا الجهاز فقط؛ Google Sheets غير متصل.");
+        else toast.error("ما تمش حفظ الحركة في Google Sheets.");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "تعذر حفظ الحركة في Google Sheets.", {
           duration: 12_000,
